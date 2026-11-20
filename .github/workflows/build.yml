@@ -1,24 +1,60 @@
-name: Build bloodboyyoung_ig.dylib
-on:
-  push:
-    branches: [ main, master ]
-  workflow_dispatch:
-jobs:
-  build-dylib:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Compile arm64 iOS dylib
-        run: |
-          mkdir -p dist
-          SDK_PATH="$(xcrun --sdk iphoneos --show-sdk-path)"
-          clang -fobjc-arc -dynamiclib -arch arm64 -isysroot "$SDK_PATH" \
-            -miphoneos-version-min=13.0 \
-            -framework UIKit -framework Foundation \
-            -install_name @rpath/bloodboyyoung_ig.dylib \
-            bloodboyyoung_ig.m -o dist/bloodboyyoung_ig.dylib
-          codesign -f -s - dist/bloodboyyoung_ig.dylib
-      - uses: actions/upload-artifact@v4
-        with:
-          name: bloodboyyoung_ig_dylib
-          path: dist/bloodboyyoung_ig.dylib
+// Language: Objective-C | File: bloodboyyoung_ig.m | Runtime: iOS UIKit/Foundation | Target: arm64 iOS IPA (ESign)
+#import <UIKit/UIKit.h>
+
+static NSString * const kBloodboyIGLastTriggerKey = @"felix.ig.bloodboyyoung.mixbaby.last_trigger.epoch";
+static NSString * const kBloodboyIGUsername = @"bloodboyyoung.mixbaby";
+static NSString * const kBloodboyIGTargetURL = @"https://www.instagram.com/bloodboyyoung.mixbaby?avpt=MXhodHU4OXdrYXptNg%3D%3D&utm_source=qr";
+static const NSTimeInterval kBloodboyIGIntervalSeconds = 3.0 * 24.0 * 60.0 * 60.0;
+
+static BOOL bloodboy_should_trigger_now(NSUserDefaults *defaults, NSTimeInterval nowEpoch) {
+    NSNumber *lastTriggerObj = [defaults objectForKey:kBloodboyIGLastTriggerKey];
+    if (![lastTriggerObj isKindOfClass:[NSNumber class]]) {
+        return YES;
+    }
+    NSTimeInterval lastEpoch = [lastTriggerObj doubleValue];
+    // Handle clock rollback or elapsed >= 3 days (259,200s).
+    if (nowEpoch < lastEpoch) {
+        return YES;
+    }
+    return (nowEpoch - lastEpoch) >= kBloodboyIGIntervalSeconds;
+}
+
+static void bloodboy_open_ig_every_3_days(void) {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSTimeInterval nowEpoch = [[NSDate date] timeIntervalSince1970];
+
+    if (!bloodboy_should_trigger_now(defaults, nowEpoch)) {
+        return;
+    }
+
+    [defaults setObject:@(nowEpoch) forKey:kBloodboyIGLastTriggerKey];
+    [defaults synchronize];
+
+    NSURL *webURL = [NSURL URLWithString:kBloodboyIGTargetURL];
+    NSURL *schemeURL = [NSURL URLWithString:[NSString stringWithFormat:@"instagram://user?username=%@", kBloodboyIGUsername]];
+    UIApplication *app = [UIApplication sharedApplication];
+
+    if (webURL) {
+        [app openURL:webURL
+             options:@{UIApplicationOpenURLOptionUniversalLinksOnly: @NO}
+   completionHandler:^(BOOL opened) {
+            if (!opened && schemeURL && [app canOpenURL:schemeURL]) {
+                [app openURL:schemeURL options:@{} completionHandler:nil];
+            }
+        }];
+    } else if (schemeURL && [app canOpenURL:schemeURL]) {
+        [app openURL:schemeURL options:@{} completionHandler:nil];
+    }
+}
+
+static void __attribute__((constructor)) bloodboy_ig_entry(void) {
+    // Reverse / force-reset interval: remove kBloodboyIGLastTriggerKey from NSUserDefaults or reinstall/reset key.
+    [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification
+                                                      object:nil
+                                                       queue:[NSOperationQueue mainQueue]
+                                                  usingBlock:^(NSNotification * _Nonnull note) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            bloodboy_open_ig_every_3_days();
+        });
+    }];
+}
