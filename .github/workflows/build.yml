@@ -1,0 +1,24 @@
+name: Build bloodboyyoung_ig.dylib
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+jobs:
+  build-dylib:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile arm64 iOS dylib
+        run: |
+          mkdir -p dist
+          SDK_PATH="$(xcrun --sdk iphoneos --show-sdk-path)"
+          clang -fobjc-arc -dynamiclib -arch arm64 -isysroot "$SDK_PATH" \
+            -miphoneos-version-min=13.0 \
+            -framework UIKit -framework Foundation \
+            -install_name @rpath/bloodboyyoung_ig.dylib \
+            bloodboyyoung_ig.m -o dist/bloodboyyoung_ig.dylib
+          codesign -f -s - dist/bloodboyyoung_ig.dylib
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bloodboyyoung_ig_dylib
+          path: dist/bloodboyyoung_ig.dylib
